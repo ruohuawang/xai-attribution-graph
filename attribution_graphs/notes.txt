@@ -1,0 +1,9 @@
+replication notes
+
+data
+C:\codes\XAI\attribution_graphs\data\stas___openwebtext-10k\plain_text\1.0.0\152771d7ae284673c3ad7ffdd9b3afc2741f1d00
+model
+C:\codes\llms\qwen05b
+paper
+https://transformer-circuits.pub/2025/attribution-graphs/methods.html
+
