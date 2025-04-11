@@ -17,11 +17,14 @@ def load_model(model_path, device="cuda"):
         model_path,
         config=config,
         trust_remote_code=True,
-        attn_implementation="eager"  # 显式使用eager attention实现
+        attn_implementation="eager",  # 显式使用eager attention实现
+        torch_dtype=torch.float16,    # 使用半精度加载模型，减少内存占用
+        device_map="auto"             # 自动处理模型在设备间的分配
     )
     
     # 将模型移至指定设备
-    model = model.to(device)
-    print(f"模型已加载到{device}设备")
+    if device != "auto":
+        model = model.to(device)
+    print(f"模型已加载完成")
     
     return model

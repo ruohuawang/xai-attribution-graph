@@ -114,9 +114,8 @@ def train_clt(config, clt_config):
         total_sparsity_loss = 0
         num_batches = 0
         
-        # 计算当前epoch的稀疏性惩罚系数（线性增加）
-        current_sparsity_lambda = clt_config["sparsity_lambda"] * (epoch / clt_config["epochs"])
-        clt.sparsity_lambda = current_sparsity_lambda
+        # 稀疏性惩罚系数固定为1e-3，不再随epoch线性增加
+        # clt.sparsity_lambda = 1e-3 (已在初始化时设置)
         
         for batch_idx, batch in enumerate(tqdm(dataloader, desc="Training")):
             data, _ = batch
@@ -180,7 +179,7 @@ def train_clt(config, clt_config):
                 print(f"Batch {batch_idx}, Loss: {loss.item():.4f}, MSE Loss: {mse_loss.item():.4f}, Sparsity Loss: {sparsity_loss.item():.4f}")
             
             # 为了快速测试，只训练少量批次
-            if batch_idx >= 50:
+            if batch_idx >= clt_config.get("max_batches_per_epoch", 50):
                 break
         
         # 计算平均损失
