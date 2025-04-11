@@ -10,13 +10,13 @@ Attribution graphs help us understand how different components of a transformer 
 1. Tools to compute attribution between model components
 2. Cross Layer Transcoder (CLT) implementation for more accurate attribution
 3. Visualization utilities for attribution graphs
-4. Support for multiple model architectures (qwen2.5, GPT-2, BERT)
+4. Support for multiple model architectures (Qwen2.5, GPT-2, BERT)
 
 ## Features
 
 - **Attribution Analysis**: Compute how information flows between different layers and components of transformer models
 - **CLT Implementation**: Train and use causal language transformers for more accurate attribution
-- **Multiple Model Support**: Works with qwen2.5, GPT-2, and BERT architectures
+- **Multiple Model Support**: Works with Qwen2.5, GPT-2, and BERT architectures
 - **Visualization Tools**: Generate network graphs showing information flow
 
 ## Installation
@@ -79,9 +79,9 @@ The project uses the OpenWebText dataset for training and analysis. The data is 
 ## Models
 
 Supported models:
-- qwen2.5 (0.5B)
-- GPT-2
-- BERT
+- Qwen2.5 (qwen2.5-0.5b-instruct)
+- GPT-2 
+- BERT (bert-base-uncased)
 
 ## References
 
