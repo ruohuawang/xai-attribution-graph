@@ -203,11 +203,12 @@ class ReplacementModel(nn.Module):
     使用训练好的CLT替换原始模型的MLP层
     论文中描述的替换模型，用于在推理时替换原始模型的MLP层
     """
-    def __init__(self, original_model, clt):
+    def __init__(self, original_model, clt, model_type=None):
         super().__init__()
         self.original_model = original_model
         self.clt = clt
         self.config = clt.config
+        self.model_type = model_type if model_type else "qwen2"  # 默认为qwen2
     
     def forward(self, input_ids, attention_mask=None):
         """
@@ -230,7 +231,11 @@ class ReplacementModel(nn.Module):
         
         # 注册钩子以捕获残差流激活值
         def capture_residual_stream(module, input, output, layer_idx):
-            residual_stream_activations[layer_idx] = output
+            # 处理输出可能是元组的情况
+            if isinstance(output, tuple):
+                residual_stream_activations[layer_idx] = output[0]
+            else:
+                residual_stream_activations[layer_idx] = output
             return output
         
         # 替换MLP输出的钩子函数
@@ -240,7 +245,10 @@ class ReplacementModel(nn.Module):
                 # 如果还没有计算过CLT输出
                 if not reconstructed_mlp_outputs:
                     # 将残差流激活值转换为列表格式，供CLT使用
-                    residual_list = [residual_stream_activations[i] for i in range(len(residual_stream_activations))]
+                    max_layer = max(residual_stream_activations.keys())
+                    residual_list = [residual_stream_activations.get(i, None) for i in range(max_layer + 1)]
+                    # 过滤掉None值
+                    residual_list = [r for r in residual_list if r is not None]
                     # 使用CLT计算重建的MLP输出
                     recon_outputs, _ = self.clt(residual_list)
                     # 将重建输出存储到字典中
@@ -249,25 +257,89 @@ class ReplacementModel(nn.Module):
                 
                 # 返回CLT重建的输出替代原始MLP输出
                 if layer_idx in reconstructed_mlp_outputs:
-                    return reconstructed_mlp_outputs[layer_idx]
+                    # 处理输出可能是元组的情况
+                    if isinstance(output, tuple):
+                        return (reconstructed_mlp_outputs[layer_idx],) + output[1:]
+                    else:
+                        return reconstructed_mlp_outputs[layer_idx]
             
             # 如果无法替换，则返回原始输出
             return output
         
         # 注册钩子
         hooks = []
-        for i, layer in enumerate(self.original_model.layers):
-            # 捕获残差流激活值
-            hooks.append(layer.register_forward_hook(
-                lambda module, input, output, layer_idx=i: capture_residual_stream(module, input, output, layer_idx)
-            ))
+        
+        if self.model_type == "qwen2":
+            # Qwen模型结构
+            for i, layer in enumerate(self.original_model.transformer.h):
+                # 捕获残差流激活值
+                hooks.append(layer.register_forward_hook(
+                    lambda module, input, output, layer_idx=i: capture_residual_stream(module, input, output, layer_idx)
+                ))
+                
+                # 替换MLP输出
+                hooks.append(layer.mlp.register_forward_hook(
+                    lambda module, input, output, layer_idx=i: replace_mlp_output(module, input, output, layer_idx)
+                ))
+        
+        elif self.model_type == "gpt2":
+            # GPT-2模型结构
+            for i, layer in enumerate(self.original_model.h):
+                # 捕获残差流激活值
+                hooks.append(layer.register_forward_hook(
+                    lambda module, input, output, layer_idx=i: capture_residual_stream(module, input, output, layer_idx)
+                ))
+                
+                # 替换MLP输出
+                hooks.append(layer.mlp.register_forward_hook(
+                    lambda module, input, output, layer_idx=i: replace_mlp_output(module, input, output, layer_idx)
+                ))
+        
+        elif self.model_type == "bert":
+            # BERT模型结构
+            for i, layer in enumerate(self.original_model.encoder.layer):
+                # 捕获残差流激活值
+                hooks.append(layer.register_forward_hook(
+                    lambda module, input, output, layer_idx=i: capture_residual_stream(module, input, output, layer_idx)
+                ))
+                
+                # 替换MLP输出 (BERT中称为intermediate)
+                hooks.append(layer.intermediate.register_forward_hook(
+                    lambda module, input, output, layer_idx=i: replace_mlp_output(module, input, output, layer_idx)
+                ))
+        
+        else:
+            # 通用方法，尝试自动检测模型结构
+            if hasattr(self.original_model, 'transformer') and hasattr(self.original_model.transformer, 'h'):
+                layers = self.original_model.transformer.h
+                mlp_name = 'mlp'
+            elif hasattr(self.original_model, 'h'):
+                layers = self.original_model.h
+                mlp_name = 'mlp'
+            elif hasattr(self.original_model, 'encoder') and hasattr(self.original_model.encoder, 'layer'):
+                layers = self.original_model.encoder.layer
+                mlp_name = 'intermediate'
+            else:
+                raise ValueError(f"不支持的模型结构: {type(self.original_model).__name__}")
             
-            # 替换MLP输出
-            hooks.append(layer.mlp.register_forward_hook(
-                lambda module, input, output, layer_idx=i: replace_mlp_output(module, input, output, layer_idx)
-            ))
+            for i, layer in enumerate(layers):
+                # 捕获残差流激活值
+                hooks.append(layer.register_forward_hook(
+                    lambda module, input, output, layer_idx=i: capture_residual_stream(module, input, output, layer_idx)
+                ))
+                
+                # 替换MLP输出
+                mlp = getattr(layer, mlp_name, None)
+                if mlp is not None:
+                    hooks.append(mlp.register_forward_hook(
+                        lambda module, input, output, layer_idx=i: replace_mlp_output(module, input, output, layer_idx)
+                    ))
         
         # 前向传播，钩子函数会自动替换MLP输出
+        if self.model_type == "bert" and attention_mask is None and input_ids is not None:
+            # BERT需要attention_mask
+            attention_mask = torch.ones_like(input_ids)
+        
         outputs = self.original_model(input_ids, attention_mask=attention_mask)
         
         # 移除钩子

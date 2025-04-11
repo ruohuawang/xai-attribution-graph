@@ -207,27 +207,42 @@ def train_clt(config, clt_config):
     
     return clt
 
-def load_clt(clt_path, device):
-    """
-    加载CLT模型
-    
-    Args:
-        clt_path: CLT模型路径
-        device: 设备
-        
-    Returns:
-        clt: 加载的CLT模型
-        clt_config: CLT配置
-    """
-    print(f"加载CLT模型: {clt_path}")
+# 在load_clt函数中添加model_type参数
+def load_clt(clt_path, device="cuda"):
+    """加载CLT模型"""
     checkpoint = torch.load(clt_path, map_location=device)
     clt_config = checkpoint["config"]
+    model_type = checkpoint.get("model_type", "qwen2")  # 获取保存的模型类型，默认为qwen2
     
-    # 创建CLT模型
     clt = CrossLayerTranscoder(clt_config).to(device)
-    clt.load_state_dict(checkpoint["model_state_dict"])
+    clt.load_state_dict(checkpoint["clt_state_dict"])
+    clt.eval()
     
-    return clt, clt_config
+    return clt, clt_config, model_type
+
+# 在analyze_clt函数中传递model_type
+def analyze_clt(model, clt, dataloader, device, config):
+    """分析CLT模型性能"""
+    # 获取模型类型
+    model_type = CONFIG.get("model_type", "qwen2")
+    
+    # 创建替换模型
+    replacement_model = ReplacementModel(model, clt, model_type=model_type).to(device)
+    
+    # 其余代码保持不变...
+
+# 在compute_attribution_graphs函数中传递model_type
+def compute_attribution_graphs(model, dataloader, device, config, clt=None):
+    """计算并保存归因图"""
+    # 获取模型类型
+    model_type = CONFIG.get("model_type", "qwen2")
+    
+    if clt is not None:
+        # 使用CLT创建替换模型
+        replacement_model = ReplacementModel(model, clt, model_type=model_type).to(device)
+        # ...
+    
+    # 其余代码保持不变...
 
 def build_local_replacement_model(original_model, clt, input_ids, attention_mask=None):
     """
